@@ -582,9 +582,8 @@ async function tryAutoBuy(ca, t, mode, grade) {
     var result = await buyToken(ca, AUTO_BUY.AMOUNT_SOL, AUTO_BUY.SLIPPAGE_BPS);
     boughtThisCycle++;
 
-    var dryLabel = AUTO_BUY.DRY_RUN ? ' 🧪 DRY RUN' : '';
     var buyMsg =
-      '🟢 AUTO BUY' + dryLabel + '\n' +
+      '🟢 AUTO BUY\n' +
       '<b>' + t.name + '</b> (<code>' + t.symbol + '</code>)\n' +
       'Mode: ' + mode + ' | Grade: ' + grade + '\n' +
       'Amount: <b>' + AUTO_BUY.AMOUNT_SOL + ' SOL</b>\n' +
@@ -1704,9 +1703,8 @@ async function checkTrackedPositions(trendingTokens) {
       log('[AUTOSELL] Cutloss ' + pos.symbol + ' (' + gain.toFixed(1) + '%)');
       try {
         var sellResult = await sellToken(ca, pos.tokenAmount, pos.tokenDecimals, AUTO_SELL.SLIPPAGE_BPS, pos.tokenAmount * currentPrice);
-        var dryLabel = AUTO_BUY.DRY_RUN ? ' 🧪 DRY RUN' : '';
         await sendTelegram(
-          '🔴 AUTO SELL — CUTLOSS' + dryLabel + '\n' +
+          '🔴 AUTO SELL — CUTLOSS\n' +
           '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n' +
           'Entry: $' + pos.entryPrice.toFixed(10) + '\n' +
           'Exit: $' + currentPrice.toFixed(10) + '\n' +
@@ -1737,9 +1735,8 @@ async function checkTrackedPositions(trendingTokens) {
         try {
           var sellResult = await sellToken(ca, pos.tokenAmount, pos.tokenDecimals, AUTO_SELL.SLIPPAGE_BPS, pos.tokenAmount * currentPrice);
           var peakGain = ((pos.peak - pos.entryPrice) / pos.entryPrice) * 100;
-          var dryLabel = AUTO_BUY.DRY_RUN ? ' 🧪 DRY RUN' : '';
           await sendTelegram(
-            '✅ AUTO SELL — TRAILING TP' + dryLabel + '\n' +
+            '✅ AUTO SELL — TRAILING TP\n' +
             '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n' +
             'Entry: $' + pos.entryPrice.toFixed(10) + '\n' +
             'Peak: $' + pos.peak.toFixed(10) + ' (+' + peakGain.toFixed(1) + '%)\n' +
