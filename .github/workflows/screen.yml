@@ -36,12 +36,14 @@ jobs:
           TG_THREAD_MIG: ${{ secrets.TG_THREAD_MIG }}
           TG_THREAD_ENTRY: ${{ secrets.TG_THREAD_ENTRY }}
           TG_THREAD_SIGNAL: ${{ secrets.TG_THREAD_SIGNAL }}
+          TG_THREAD_AUTO: ${{ secrets.TG_THREAD_AUTO }}
           SIGNAL_ENABLED: ${{ secrets.SIGNAL_ENABLED }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
           RADAR_BRIDGE_URL: ${{ secrets.RADAR_BRIDGE_URL }}
           RADAR_BRIDGE_SECRET: ${{ secrets.RADAR_BRIDGE_SECRET }}
+          RPC_URL: ${{ secrets.RPC_URL }}
           MIN_LP: ${{ secrets.MIN_LP }}
           MIN_VOL_5M: ${{ secrets.MIN_VOL_5M }}
           MAX_RUG_SCORE: ${{ secrets.MAX_RUG_SCORE }}
@@ -50,6 +52,19 @@ jobs:
           MIN_VOL_1H: ${{ secrets.MIN_VOL_1H }}
           MIN_SWAPS_5M: ${{ secrets.MIN_SWAPS_5M }}
           MAX_AGE_HOURS: ${{ secrets.MAX_AGE_HOURS }}
+          AUTO_BUY_ENABLED: ${{ secrets.AUTO_BUY_ENABLED }}
+          AUTO_BUY_DRY_RUN: ${{ secrets.AUTO_BUY_DRY_RUN }}
+          AUTO_BUY_AMOUNT: ${{ secrets.AUTO_BUY_AMOUNT }}
+          AUTO_BUY_MAX_PER: ${{ secrets.AUTO_BUY_MAX_PER }}
+          AUTO_BUY_SLIPPAGE: ${{ secrets.AUTO_BUY_SLIPPAGE }}
+          AUTO_BUY_GRADE: ${{ secrets.AUTO_BUY_GRADE }}
+          AUTO_BUY_MODES: ${{ secrets.AUTO_BUY_MODES }}
+          AUTO_SELL_ENABLED: ${{ secrets.AUTO_SELL_ENABLED }}
+          AUTO_SELL_CUTLOSS_PCT: ${{ secrets.AUTO_SELL_CUTLOSS_PCT }}
+          AUTO_SELL_TRAILING_START_PCT: ${{ secrets.AUTO_SELL_TRAILING_START_PCT }}
+          AUTO_SELL_TRAILING_DROP_PCT: ${{ secrets.AUTO_SELL_TRAILING_DROP_PCT }}
+          AUTO_SELL_TP_PCT: ${{ secrets.AUTO_SELL_TP_PCT }}
+          AUTO_SELL_SLIPPAGE: ${{ secrets.AUTO_SELL_SLIPPAGE }}
       - name: Push JSON data to repo
         run: |
           git config user.name "github-actions[bot]"
