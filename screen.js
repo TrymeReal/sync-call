@@ -114,6 +114,7 @@ const TRACKING_LOG  = path.join(__dirname, 'tracking_log.json');
 const SEEN    = new Map();
 const TRACKED = new Map();
 const TARGETS = [30, 50, 100, 200, 500];
+let boughtThisCycle = 0;
 let startTime = Date.now();
 let totalNotified = 0;
 
@@ -550,8 +551,7 @@ async function getRugCheck(ca, insiderThreshold) {
 async function sendTelegram(msg, replyTo, threadId) {
   if (threadId === undefined) return null; // Thread tidak dikonfigurasi, skip
   try {
-    var resolvedThread = threadId !== undefined ? threadId : null;
-    var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
+    var resolvedThread = threadId !== undefined ? threadId : null;    var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
     if (resolvedThread)  payload.message_thread_id  = resolvedThread;
     if (replyTo)         payload.reply_to_message_id = replyTo;
     var res = await axios.post(TG_API, payload, { timeout: 10000 });
@@ -563,7 +563,56 @@ async function sendTelegram(msg, replyTo, threadId) {
   }
 }
 
-async function sendRadarBridge(t, mode, extra = {}) {
+// ─────────────────────────────────────────────
+//  AUTO BUY
+// ─────────────────────────────────────────────
+async function tryAutoBuy(ca, t, mode, grade) {
+  if (!AUTO_BUY.ENABLED) return null;
+  if (boughtThisCycle >= AUTO_BUY.MAX_PER_CYCLE) {
+    log('[AUTOBUY] Max per cycle (' + AUTO_BUY.MAX_PER_CYCLE + ') tercapai, skip ' + t.symbol);
+    return null;
+  }
+  var modes = AUTO_BUY.MODES.split(',').map(function(m) { return m.trim().toUpperCase(); });
+  if (!modes.includes(mode.toUpperCase())) return null;
+  if (AUTO_BUY.ONLY_GRADE !== 'ALL' && grade !== AUTO_BUY.ONLY_GRADE) return null;
+  if (TRACKED.has(ca) && TRACKED.get(ca).bought) return null;
+
+  try {
+    log('[AUTOBUY] Eksekusi buy ' + t.symbol + ' ' + AUTO_BUY.AMOUNT_SOL + ' SOL' + (AUTO_BUY.DRY_RUN ? ' [DRY RUN]' : ''));
+    var result = await buyToken(ca, AUTO_BUY.AMOUNT_SOL, AUTO_BUY.SLIPPAGE_BPS);
+    boughtThisCycle++;
+
+    var dryLabel = AUTO_BUY.DRY_RUN ? ' 🧪 DRY RUN' : '';
+    var buyMsg =
+      '🟢 AUTO BUY' + dryLabel + '\n' +
+      '<b>' + t.name + '</b> (<code>' + t.symbol + '</code>)\n' +
+      'Mode: ' + mode + ' | Grade: ' + grade + '\n' +
+      'Amount: <b>' + AUTO_BUY.AMOUNT_SOL + ' SOL</b>\n' +
+      'Entry: $' + result.entryPriceSol.toFixed(10) + '\n' +
+      'Tokens: ' + result.tokenAmount.toFixed(2) + '\n' +
+      (AUTO_BUY.DRY_RUN ? '' : 'TX: <code>' + result.txSignature + '</code>\n') +
+      '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>' +
+      ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>';
+
+    await sendTelegram(buyMsg, null, CFG.tgThreadAuto);
+    log('[AUTOBUY] ✓ ' + t.symbol + ' @ $' + result.entryPriceSol.toFixed(10));
+
+    return {
+      bought: true,
+      tokenAmount: result.tokenAmount,
+      tokenDecimals: result.tokenDecimals,
+      entryPriceSol: result.entryPriceSol,
+      txBuy: result.txSignature,
+      peak: Number(t.price) || result.entryPriceSol,
+      trailingActive: false,
+    };
+  } catch (e) {
+    log('[AUTOBUY] Error ' + t.symbol + ': ' + e.message);
+    return null;
+  }
+}
+
+
   if (!CFG.radarBridgeUrl || !CFG.radarBridgeSecret) {
     log('[BRIDGE] Skip ' + mode + ' — RADAR_BRIDGE_URL/RADAR_BRIDGE_SECRET belum diset');
     return null;
@@ -1281,6 +1330,7 @@ function buildSignalMsg(t) {
 //  MAIN PROCESSING LOOP
 // ─────────────────────────────────────────────
 async function processTokens() {
+  boughtThisCycle = 0;
   log('========== SCREENING ==========');
   // Dua sumber terpisah: trenches `completed` untuk New Migration, trending untuk Swing 1D.
   var migrationTokens = fetchGmgnTrenches();
@@ -1481,6 +1531,9 @@ async function processTokens() {
         threadId: CFG.tgThreadMig,
       });
       log('Tracked [MIG] ' + t.symbol + ' @ $' + t.price);
+      // AUTO BUY
+      var buyResult = await tryAutoBuy(t.address, t, 'MIGRATION', grade);
+      if (buyResult) Object.assign(TRACKED.get(t.address), buyResult);
     }
   }
 
@@ -1528,6 +1581,9 @@ async function processTokens() {
           threadId: CFG.tgThreadId,
         });
         log('Tracked [SWING] ' + t.symbol + ' @ $' + t.price);
+        // AUTO BUY
+        var buyResult = await tryAutoBuy(t.address, t, 'SWING', grade);
+        if (buyResult) Object.assign(TRACKED.get(t.address), buyResult);
       }
     } catch (e) { log('Error [SWING] ' + t.symbol + ': ' + e.message); }
   }
@@ -1641,6 +1697,61 @@ async function checkTrackedPositions(trendingTokens) {
 
     var gain = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
     var modeLabel = pos.mode === 'SWING' ? '🔄 Swing' : '🆕 Mig';
+
+    // ── AUTO SELL: Cutloss ──
+    if (pos.bought && AUTO_SELL.ENABLED && gain <= -(AUTO_SELL.CUTLOSS_PCT)) {
+      log('[AUTOSELL] Cutloss ' + pos.symbol + ' (' + gain.toFixed(1) + '%)');
+      try {
+        var sellResult = await sellToken(ca, pos.tokenAmount, pos.tokenDecimals, AUTO_SELL.SLIPPAGE_BPS, pos.tokenAmount * currentPrice);
+        var dryLabel = AUTO_BUY.DRY_RUN ? ' 🧪 DRY RUN' : '';
+        await sendTelegram(
+          '🔴 AUTO SELL — CUTLOSS' + dryLabel + '\n' +
+          '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n' +
+          'Entry: $' + pos.entryPrice.toFixed(10) + '\n' +
+          'Exit: $' + currentPrice.toFixed(10) + '\n' +
+          'Loss: <b>' + gain.toFixed(1) + '%</b>\n' +
+          (AUTO_BUY.DRY_RUN ? '' : 'TX: <code>' + sellResult.txSignature + '</code>\n') +
+          '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>',
+          null, CFG.tgThreadAuto
+        );
+      } catch (e) { log('[AUTOSELL] Error cutloss ' + pos.symbol + ': ' + e.message); }
+      toRemove.push(ca);
+      continue;
+    }
+
+    // ── AUTO SELL: Trailing TP ──
+    if (pos.bought && AUTO_SELL.ENABLED && gain >= AUTO_SELL.TRAILING_START_PCT) {
+      if (!pos.trailingActive) {
+        pos.trailingActive = true;
+        pos.peak = currentPrice;
+        log('[AUTOSELL] Trailing aktif ' + pos.symbol + ' peak $' + currentPrice.toFixed(10));
+        savePositions();
+      } else if (currentPrice > pos.peak) {
+        pos.peak = currentPrice;
+        savePositions();
+      }
+      var dropFromPeak = ((currentPrice - pos.peak) / pos.peak) * 100;
+      if (dropFromPeak <= -(AUTO_SELL.TRAILING_DROP_PCT)) {
+        log('[AUTOSELL] Trailing TP ' + pos.symbol + ' (drop ' + dropFromPeak.toFixed(1) + '% dari peak)');
+        try {
+          var sellResult = await sellToken(ca, pos.tokenAmount, pos.tokenDecimals, AUTO_SELL.SLIPPAGE_BPS, pos.tokenAmount * currentPrice);
+          var peakGain = ((pos.peak - pos.entryPrice) / pos.entryPrice) * 100;
+          var dryLabel = AUTO_BUY.DRY_RUN ? ' 🧪 DRY RUN' : '';
+          await sendTelegram(
+            '✅ AUTO SELL — TRAILING TP' + dryLabel + '\n' +
+            '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n' +
+            'Entry: $' + pos.entryPrice.toFixed(10) + '\n' +
+            'Peak: $' + pos.peak.toFixed(10) + ' (+' + peakGain.toFixed(1) + '%)\n' +
+            'Exit: $' + currentPrice.toFixed(10) + ' (+' + gain.toFixed(1) + '%)\n' +
+            (AUTO_BUY.DRY_RUN ? '' : 'TX: <code>' + sellResult.txSignature + '</code>\n') +
+            '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>',
+            null, CFG.tgThreadAuto
+          );
+        } catch (e) { log('[AUTOSELL] Error trailing ' + pos.symbol + ': ' + e.message); }
+        toRemove.push(ca);
+        continue;
+      }
+    }
 
     if (gain <= -80) {
       var wasProfit   = (pos.nextTargetIdx || 0) > 0;
