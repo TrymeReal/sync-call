@@ -593,11 +593,12 @@ async function tryAutoBuy(ca, t, mode, grade) {
       '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>' +
       ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>';
 
-    await sendTelegram(buyMsg, null, CFG.tgThreadAuto);
+    var autoBuyMsgId = await sendTelegram(buyMsg, null, CFG.tgThreadAuto);
     log('[AUTOBUY] ✓ ' + t.symbol + ' @ $' + result.entryPriceSol.toFixed(10));
 
     return {
       bought: true,
+      autoBuyMsgId: autoBuyMsgId,
       tokenAmount: result.tokenAmount,
       tokenDecimals: result.tokenDecimals,
       entryPriceSol: result.entryPriceSol,
@@ -1717,7 +1718,7 @@ async function checkTrackedPositions(trendingTokens) {
           'PNL: <b>' + (solPnl >= 0 ? '+' : '') + solPnl.toFixed(4) + ' SOL</b>\n' +
           (AUTO_BUY.DRY_RUN ? '' : 'TX: <code>' + sellResult.txSignature + '</code>\n') +
           '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>',
-          null, CFG.tgThreadAuto
+          pos.autoBuyMsgId || null, CFG.tgThreadAuto
         );
       } catch (e) { log('[AUTOSELL] Error cutloss ' + pos.symbol + ': ' + e.message); }
       toRemove.push(ca);
@@ -1754,7 +1755,7 @@ async function checkTrackedPositions(trendingTokens) {
             'PNL: <b>+' + solPnl.toFixed(4) + ' SOL</b>\n' +
             (AUTO_BUY.DRY_RUN ? '' : 'TX: <code>' + sellResult.txSignature + '</code>\n') +
             '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>',
-            null, CFG.tgThreadAuto
+            pos.autoBuyMsgId || null, CFG.tgThreadAuto
           );
         } catch (e) { log('[AUTOSELL] Error trailing ' + pos.symbol + ': ' + e.message); }
         toRemove.push(ca);
