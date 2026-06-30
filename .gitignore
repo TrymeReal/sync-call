@@ -1,0 +1,7 @@
+node_modules/
+.env
+.env.*
+seen.json
+positions.json
+tracking_log.json
+screen.log
