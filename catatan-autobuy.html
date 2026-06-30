@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catatan Auto-Buy</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Courier New', monospace; background: #0d1117; color: #c9d1d9; min-height: 100vh; padding: 32px 24px; }
+  h1 { font-size: 13px; font-weight: 700; color: #58a6ff; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 28px; border-bottom: 1px solid #21262d; padding-bottom: 12px; }
+  .section { margin-bottom: 24px; }
+  .section-title { font-size: 11px; font-weight: 700; color: #8b949e; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 10px; }
+  .card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 18px; }
+  .row { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-bottom: 1px solid #21262d; }
+  .row:last-child { border-bottom: none; }
+  .key { color: #79c0ff; min-width: 200px; font-size: 13px; flex-shrink: 0; }
+  .eq { color: #6e7681; margin: 0 2px; }
+  .val { color: #a5f3a5; font-size: 13px; }
+  .val.muted { color: #8b949e; }
+  .val.red { color: #ff7b72; }
+  .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-left: 8px; letter-spacing: .06em; vertical-align: middle; }
+  .badge-real { background: #3d1a1a; color: #ff7b72; border: 1px solid #6e2929; }
+  .badge-dry { background: #1a3a2a; color: #3fb950; border: 1px solid #2a6040; }
+  .notif { background: #1c2128; border: 1px solid #30363d; border-left: 3px solid #f0a53a; border-radius: 6px; padding: 12px 14px; font-size: 12.5px; color: #c9d1d9; line-height: 1.6; }
+  .notif .label { color: #f0a53a; font-weight: 700; font-size: 11px; letter-spacing: .08em; margin-bottom: 6px; }
+  .notif .trigger { color: #8b949e; }
+  .notif .highlight { color: #3fb950; font-weight: 700; }
+  .notif .tag { color: #f0a53a; }
+</style>
+</head>
+<body>
+<h1>📋 Catatan Auto-Buy Config</h1>
+
+<div class="section">
+  <div class="section-title">Real Mode <span class="badge badge-real">LIVE</span></div>
+  <div class="card">
+    <div class="row"><span class="key">PRIVATE_KEY</span><span class="eq">=</span><span class="val">your_wallet_private_key</span></div>
+    <div class="row"><span class="key">RPC_URL</span><span class="eq">=</span><span class="val">https://your-rpc-endpoint</span></div>
+    <div class="row"><span class="key">AUTO_BUY_DRY_RUN</span><span class="eq">=</span><span class="val red">false</span></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Dry Run Mode <span class="badge badge-dry">SAFE</span></div>
+  <div class="card">
+    <div class="row"><span class="key">AUTO_BUY_DRY_RUN</span><span class="eq">=</span><span class="val">true</span></div>
+    <div class="row"><span class="key">PRIVATE_KEY</span><span class="eq">=</span><span class="val muted">(boleh kosong)</span></div>
+    <div class="row"><span class="key">RPC_URL</span><span class="eq">=</span><span class="val muted">(boleh kosong)</span></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Notif Autosell Dry Run</div>
+  <div class="notif">
+    <div class="label">📍 Lokasi</div>
+    <div style="margin-bottom:10px;color:#8b949e;">Sudah ditambah di <span style="color:#79c0ff;">auto-screen/screen.js</span></div>
+    <div class="label">⚡ Trigger</div>
+    <div class="trigger">Target tercapai <span class="highlight">+30%</span> &nbsp;→&nbsp; kirim notif:</div>
+    <div style="margin-top:8px;background:#0d1117;border-radius:5px;padding:10px 12px;font-size:12px;line-height:1.8;">
+      <span class="tag">🤖 AUTOSELL TAKE PROFIT</span> <span style="color:#f0a53a;font-weight:700;">(DRY RUN)</span>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
