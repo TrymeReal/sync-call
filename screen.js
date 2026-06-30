@@ -548,6 +548,7 @@ async function getRugCheck(ca, insiderThreshold) {
 }
 
 async function sendTelegram(msg, replyTo, threadId) {
+  if (threadId === undefined) return null; // Thread tidak dikonfigurasi, skip
   try {
     var resolvedThread = threadId !== undefined ? threadId : null;
     var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
