@@ -1516,15 +1516,18 @@ async function processTokens() {
     SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
 
     log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:' + (paidDex ? '✅' : '⚠️') + ' Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
-    const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
-    const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
+    let msgId = null;
+    if (!NOTIF_ONLY_AUTO) {
+      const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
+      msgId = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
+    }
     await sendRadarBridge(t, 'MIGRATION', {
       grade,
       rugScore: rug.score,
       insiderPct: rug.insiderPct,
       socialScore: dexInfo ? socialScore : undefined
     });
-    totalNotified++;
+    if (!NOTIF_ONLY_AUTO) totalNotified++;
 
     if (t.price && Number(t.price) > 0) {
       TRACKED.set(t.address, {
@@ -1567,14 +1570,17 @@ async function processTokens() {
       SEEN.set(t.address, { ...existingEntry, swingNotified: Date.now(), mode: 'swing' });
 
       log('[SWING] ' + grade + ' ' + t.symbol + ' — Kirim notif');
-      const fullMsg = await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals);
-      const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadId);
+      let msgId = null;
+      if (!NOTIF_ONLY_AUTO) {
+        const fullMsg = await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals);
+        msgId = await sendTelegram(fullMsg, null, CFG.tgThreadId);
+      }
       await sendRadarBridge(t, 'SWING', {
         grade,
         rugScore: rug.score,
         insiderPct: rug.insiderPct
       });
-      totalNotified++;
+      if (!NOTIF_ONLY_AUTO) totalNotified++;
 
       if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
         TRACKED.set(t.address, {
@@ -1643,14 +1649,17 @@ async function processTokens() {
     SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal' });
 
     log('[SIGNAL] ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Holders:' + t.holder_count + ' Rug:' + rugScore + ')');
-    var fullMsg = buildSignalMsg(t);
-    var msgId = await sendTelegram(fullMsg, null, CFG.tgThreadSignal);
+    var msgId = null;
+    if (!NOTIF_ONLY_AUTO) {
+      var fullMsg = buildSignalMsg(t);
+      msgId = await sendTelegram(fullMsg, null, CFG.tgThreadSignal);
+    }
     await sendRadarBridge(t, 'SMART_MONEY', {
       grade: 'SIGNAL',
       rugScore,
       insiderPct: (t.suspected_insider_hold_rate || 0) * 100
     });
-    totalNotified++;
+    if (!NOTIF_ONLY_AUTO) totalNotified++;
     // Delay 1.5s antar notif signal biar gak kena TG rate limit
     await new Promise(r => setTimeout(r, 1500));
 
