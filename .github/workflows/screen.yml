@@ -1,0 +1,59 @@
+name: Auto Screen
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+concurrency:
+  group: screen
+  cancel-in-progress: false
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Restore cache
+        id: cache-data
+        uses: actions/cache@v4
+        with:
+          path: |
+            seen.json
+            positions.json
+          key: data-${{ github.run_id }}
+          restore-keys: data-
+      - run: npm install
+      - run: npm install -g gmgn-cli
+      - run: node screen.js
+        env:
+          CI: 'false'
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          TG_THREAD_ID: ${{ secrets.TG_THREAD_ID }}
+          TG_THREAD_MIG: ${{ secrets.TG_THREAD_MIG }}
+          TG_THREAD_ENTRY: ${{ secrets.TG_THREAD_ENTRY }}
+          TG_THREAD_SIGNAL: ${{ secrets.TG_THREAD_SIGNAL }}
+          SIGNAL_ENABLED: ${{ secrets.SIGNAL_ENABLED }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
+          RADAR_BRIDGE_URL: ${{ secrets.RADAR_BRIDGE_URL }}
+          RADAR_BRIDGE_SECRET: ${{ secrets.RADAR_BRIDGE_SECRET }}
+          MIN_LP: ${{ secrets.MIN_LP }}
+          MIN_VOL_5M: ${{ secrets.MIN_VOL_5M }}
+          MAX_RUG_SCORE: ${{ secrets.MAX_RUG_SCORE }}
+          MIN_BUY_RATIO: ${{ secrets.MIN_BUY_RATIO }}
+          MAX_INSIDER_PCT: ${{ secrets.MAX_INSIDER_PCT }}
+          MIN_VOL_1H: ${{ secrets.MIN_VOL_1H }}
+          MIN_SWAPS_5M: ${{ secrets.MIN_SWAPS_5M }}
+          MAX_AGE_HOURS: ${{ secrets.MAX_AGE_HOURS }}
+      - name: Push JSON data to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f positions.json tracking_log.json seen.json
+          git diff --staged --quiet || git commit -m "chore: update data [skip ci]"
+          git push
