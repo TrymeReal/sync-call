@@ -613,6 +613,7 @@ async function tryAutoBuy(ca, t, mode, grade) {
 }
 
 
+async function sendRadarBridge(t, mode, extra = {}) {
   if (!CFG.radarBridgeUrl || !CFG.radarBridgeSecret) {
     log('[BRIDGE] Skip ' + mode + ' — RADAR_BRIDGE_URL/RADAR_BRIDGE_SECRET belum diset');
     return null;
