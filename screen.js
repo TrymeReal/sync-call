@@ -1980,4 +1980,4 @@ if (process.env.CI === 'true') {
   setInterval(doHealthCheck, CFG.healthInterval * 1000);
   setTimeout(() => pushJSONToGitHub(), 60 * 1000); // push pertama setelah 1 menit
   setInterval(() => pushJSONToGitHub(), 60 * 1000); // push tiap 1 menit (dipercepat dari 10 menit, biar dashboard ga lag dari notif Telegram)
-}
+} 
