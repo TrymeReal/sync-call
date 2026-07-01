@@ -1726,8 +1726,15 @@ async function checkTrackedPositions(trendingTokens) {
           '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>',
           pos.autoBuyMsgId || null, CFG.tgThreadAuto
         );
-      } catch (e) { log('[AUTOSELL] Error cutloss ' + pos.symbol + ': ' + e.message); }
-      toRemove.push(ca);
+        toRemove.push(ca);
+      } catch (e) {
+        log('[AUTOSELL] Error cutloss ' + pos.symbol + ': ' + e.message + ' — posisi TETAP di-track, akan dicoba jual lagi cycle berikutnya');
+        pos.sellFailCount = (pos.sellFailCount || 0) + 1;
+        if (pos.sellFailCount >= 5) {
+          log('[AUTOSELL] ' + pos.symbol + ' gagal jual 5x berturut-turut — cek manual! Tetap di-track tapi butuh perhatian.');
+        }
+        savePositions();
+      }
       continue;
     }
 
@@ -1763,8 +1770,15 @@ async function checkTrackedPositions(trendingTokens) {
             '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>',
             pos.autoBuyMsgId || null, CFG.tgThreadAuto
           );
-        } catch (e) { log('[AUTOSELL] Error trailing ' + pos.symbol + ': ' + e.message); }
-        toRemove.push(ca);
+          toRemove.push(ca);
+        } catch (e) {
+          log('[AUTOSELL] Error trailing ' + pos.symbol + ': ' + e.message + ' — posisi TETAP di-track, akan dicoba jual lagi cycle berikutnya');
+          pos.sellFailCount = (pos.sellFailCount || 0) + 1;
+          if (pos.sellFailCount >= 5) {
+            log('[AUTOSELL] ' + pos.symbol + ' gagal jual 5x berturut-turut — cek manual! Tetap di-track tapi butuh perhatian.');
+          }
+          savePositions();
+        }
         continue;
       }
     }
