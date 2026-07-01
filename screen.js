@@ -1782,13 +1782,13 @@ async function checkTrackedPositions(trendingTokens) {
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
       var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
       var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
-      await sendTelegram(
-        gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | <b>' + stopLabel + '</b> | '
-        + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
-        + 'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
-        pos.msgId,
-        safeThread
-      );
+      // [NOTIF DIMATIKAN - Stop Track] await sendTelegram(
+        // gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | <b>' + stopLabel + '</b> | '
+        // + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
+        // + 'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
+        // pos.msgId,
+        // safeThread
+      // );
       continue;
     }
 
@@ -1804,17 +1804,17 @@ async function checkTrackedPositions(trendingTokens) {
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
       var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
       var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
-      await sendTelegram(
-        gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n'
-        + '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n'
-        + 'Entry: $' + pos.entryPrice.toFixed(10) + '\n'
-        + 'Sekarang: $' + currentPrice.toFixed(10) + '\n'
-        + 'Gain: <b>+' + gain.toFixed(1) + '%</b>\n'
-        + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
-        + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
-        pos.msgId,
-        safeThread
-      );
+      // [NOTIF DIMATIKAN - Target Tercapai] await sendTelegram(
+        // gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n'
+        // + '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n'
+        // + 'Entry: $' + pos.entryPrice.toFixed(10) + '\n'
+        // + 'Sekarang: $' + currentPrice.toFixed(10) + '\n'
+        // + 'Gain: <b>+' + gain.toFixed(1) + '%</b>\n'
+        // + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
+        // + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
+        // pos.msgId,
+        // safeThread
+      // );
       pos.nextTargetIdx = highestIdx + 1;
       savePositions();
     }
