@@ -22,7 +22,7 @@ const CFG = {
   minVol1h:        Number(process.env.MIN_VOL_1H)        || 60000,
   minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 50,
   minVol5m:        Number(process.env.MIN_VOL_5M)        || 5000,
-  minAgeHours:     Number(process.env.MIN_AGE_HOURS)     || 1,
+  minAgeHours:     Number(process.env.MIN_AGE_HOURS)     || 0,
   maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 24,
 
   // Mode New Migration (sama seperti sebelumnya)
