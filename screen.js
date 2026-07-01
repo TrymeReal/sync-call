@@ -22,7 +22,6 @@ const CFG = {
   minVol1h:        Number(process.env.MIN_VOL_1H)        || 60000,
   minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 50,
   minVol5m:        Number(process.env.MIN_VOL_5M)        || 5000,
-  minAgeHours:     Number(process.env.MIN_AGE_HOURS)     || 0,
   maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 24,
 
   // Mode New Migration (sama seperti sebelumnya)
@@ -86,8 +85,6 @@ const AUTO_BUY = {
   SLIPPAGE_BPS: Number(process.env.AUTO_BUY_SLIPPAGE)   || 500,
   ONLY_GRADE:   process.env.AUTO_BUY_GRADE             || 'ALL',
   MODES:        process.env.AUTO_BUY_MODES             || 'SWING',
-  MIG_MAX_FAIR_MULT:   Number(process.env.AUTO_BUY_MIG_MAX_FAIR_MULT)   || 1.10,
-  SWING_MAX_FAIR_MULT: Number(process.env.AUTO_BUY_SWING_MAX_FAIR_MULT) || 1.03,
 };
 setDryRun(AUTO_BUY.DRY_RUN);
 
@@ -169,11 +166,6 @@ function timeAgo(ts) {
 function tokenAgeHours(ts) {
   if (!ts) return 0;
   return (Date.now() - ts * 1000) / 3600000;
-}
-
-function isNewMigrationAgeEligible(t) {
-  const ageH = tokenAgeHours(t.creation_timestamp);
-  return ageH >= CFG.minAgeHours && ageH < CFG.maxAgeHours;
 }
 
 // ─────────────────────────────────────────────
@@ -579,34 +571,6 @@ async function sendTelegram(msg, replyTo, threadId) {
 // ─────────────────────────────────────────────
 //  AUTO BUY
 // ─────────────────────────────────────────────
-async function checkAutoBuyEntryZone(t, mode) {
-  var price = Number(t.price);
-  if (!price || price <= 0) {
-    return { pass: false, reason: 'harga token tidak valid' };
-  }
-
-  var fib = await calculateFibonacci(t.address, price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
-  var fair = Number(fib.fair);
-  if (!fair || fair <= 0) {
-    return { pass: false, reason: 'fair entry tidak valid' };
-  }
-
-  var modeKey = String(mode || '').toUpperCase();
-  var maxMult = modeKey === 'SWING' ? AUTO_BUY.SWING_MAX_FAIR_MULT : AUTO_BUY.MIG_MAX_FAIR_MULT;
-  var maxEntry = fair * maxMult;
-  if (price > maxEntry) {
-    return {
-      pass: false,
-      reason: 'price $' + fmtPrice(price) + ' > fair $' + fmtPrice(fair) + ' x' + maxMult.toFixed(2) + ' (max $' + fmtPrice(maxEntry) + ')',
-      fib,
-      fair,
-      maxEntry,
-    };
-  }
-
-  return { pass: true, reason: 'price $' + fmtPrice(price) + ' <= max entry $' + fmtPrice(maxEntry), fib, fair, maxEntry };
-}
-
 async function tryAutoBuy(ca, t, mode, grade) {
   if (!AUTO_BUY.ENABLED) return null;
   if (boughtThisCycle >= AUTO_BUY.MAX_PER_CYCLE) {
@@ -619,13 +583,6 @@ async function tryAutoBuy(ca, t, mode, grade) {
   if (TRACKED.has(ca) && TRACKED.get(ca).bought) return null;
 
   try {
-    var entryGate = await checkAutoBuyEntryZone(t, mode);
-    if (!entryGate.pass) {
-      log('[AUTOBUY] Skip ' + mode + ' ' + t.symbol + ' (entry zone: ' + entryGate.reason + ')');
-      return null;
-    }
-    log('[AUTOBUY] Entry zone OK ' + t.symbol + ' (' + entryGate.reason + ')');
-
     log('[AUTOBUY] Eksekusi buy ' + t.symbol + ' ' + AUTO_BUY.AMOUNT_SOL + ' SOL' + (AUTO_BUY.DRY_RUN ? ' [DRY RUN]' : ''));
     var result = await buyToken(ca, AUTO_BUY.AMOUNT_SOL, AUTO_BUY.SLIPPAGE_BPS);
     boughtThisCycle++;
@@ -635,14 +592,14 @@ async function tryAutoBuy(ca, t, mode, grade) {
       '<b>' + t.name + '</b> (<code>' + t.symbol + '</code>)\n' +
       'Mode: ' + mode + ' | Grade: ' + grade + '\n' +
       'Amount: <b>' + AUTO_BUY.AMOUNT_SOL + ' SOL</b>\n' +
-      'Entry: ' + result.entryPriceSol.toFixed(10) + ' SOL/token\n' +
+      'Entry: $' + result.entryPriceSol.toFixed(10) + '\n' +
       'Tokens: ' + result.tokenAmount.toFixed(2) + '\n' +
       (AUTO_BUY.DRY_RUN ? '' : 'TX: <code>' + result.txSignature + '</code>\n') +
       '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>' +
       ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>';
 
     var autoBuyMsgId = await sendTelegram(buyMsg, null, CFG.tgThreadAuto);
-    log('[AUTOBUY] ✓ ' + t.symbol + ' @ ' + result.entryPriceSol.toFixed(10) + ' SOL/token');
+    log('[AUTOBUY] ✓ ' + t.symbol + ' @ $' + result.entryPriceSol.toFixed(10));
 
     logTrackingEvent({
       type: AUTO_BUY.DRY_RUN ? 'AUTOBUY_DRY_RUN' : 'AUTOBUY',
@@ -870,7 +827,6 @@ async function checkSwingSignal(t) {
   // — Analisa kline 1D untuk konfirmasi sinyal —
   const signals = [];
   const klines  = await fetchSwingKlines(t.address);
-  let allowAutoBuy = true;
 
   if (klines && klines.length >= 3) {
     // PENTING: dulu close/volume/high/low difilter terpisah-pisah (.filter(v=>v>0)
@@ -895,7 +851,6 @@ async function checkSwingSignal(t) {
     }
 
     if (candles.length < 3) {
-      allowAutoBuy = false;
       log('Kline 1D kurang valid setelah cleanup untuk ' + t.symbol + ', fallback ke sinyal dasar');
       if (vol1h >= CFG.swingMinVol1h)
         signals.push('Vol 1h cukup $' + fmt(vol1h));
@@ -959,7 +914,6 @@ async function checkSwingSignal(t) {
 
   } else {
     // Kline tidak tersedia — fallback ke sinyal dasar dari data trending
-    allowAutoBuy = false;
     log('Kline 1D tidak tersedia untuk ' + t.symbol + ', fallback ke sinyal dasar');
     if (vol1h >= CFG.swingMinVol1h)
       signals.push('Vol 1h cukup $' + fmt(vol1h));
@@ -974,7 +928,7 @@ async function checkSwingSignal(t) {
   if (positiveSignals.length === 0)
     return { pass: false, reason: 'Tidak ada sinyal pre-pump' };
 
-  return { pass: true, signals, allowAutoBuy };
+  return { pass: true, signals };
 }
 
 // ─────────────────────────────────────────────
@@ -993,45 +947,20 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
     const nowSec  = Math.floor(Date.now() / 1000);
     const klines  = await fetchGMGNKline(address, resolution, nowSec - lookback, nowSec);
     if (klines && klines.length >= 3) {
-      var candles = klines
-        .map((c, index) => ({
-          index,
-          time: Number(c.time ?? c.timestamp ?? c.t ?? 0),
-          high: Number(c.high),
-          low: Number(c.low),
-        }))
-        .filter(c => c.high > 0 && c.low > 0)
-        .sort((a, b) => {
-          if (a.time > 0 && b.time > 0) return a.time - b.time;
-          return a.index - b.index;
-        })
-        .map((c, order) => ({ ...c, order }));
-      var swingHighCandle = candles.reduce((best, c) => !best || c.high > best.high ? c : best, null);
-      var swingLowCandle  = candles.reduce((best, c) => !best || c.low < best.low ? c : best, null);
-      var swingHigh       = swingHighCandle ? swingHighCandle.high : 0;
-      var swingLow        = swingLowCandle ? swingLowCandle.low : 0;
+      var highs      = klines.map(c => Number(c.high)).filter(v => v > 0);
+      var lows       = klines.map(c => Number(c.low)).filter(v => v > 0);
+      var swingHigh  = Math.max(...highs);
+      var swingLow   = Math.min(...lows);
       if (swingHigh > swingLow) {
         var range = swingHigh - swingLow;
-        var isBullish = swingLowCandle.order < swingHighCandle.order;
-        var direction = isBullish ? 'bullish' : 'bearish';
-        log('Fib dari kline ' + resolution + ' (' + direction + '): H=' + swingHigh + ' L=' + swingLow);
-        if (isBullish) {
-          return {
-            source: 'kline_' + resolution + '_' + direction,
-            swingHigh, swingLow,
-            support: Math.max(swingHigh - range * 0.500, floor).toFixed(10),
-            fair:    Math.max(swingHigh - range * 0.618, floor).toFixed(10),
-            resist:  (swingHigh + range * 0.382).toFixed(10),
-            sl:      Math.max(swingLow  - range * 0.272, floor * 0.5).toFixed(10),
-          };
-        }
+        log('Fib dari kline ' + resolution + ': H=' + swingHigh + ' L=' + swingLow);
         return {
-          source: 'kline_' + resolution + '_' + direction,
+          source: 'kline_' + resolution,
           swingHigh, swingLow,
-          support: Math.max(swingLow - range * 0.272, floor).toFixed(10),
-          fair:    Math.max(swingLow - range * 0.328, floor).toFixed(10),
-          resist:  (swingLow + range * 0.618).toFixed(10),
-          sl:      Math.max(swingLow - range * 0.382, floor * 0.5).toFixed(10),
+          support: Math.max(swingHigh - range * 0.500, floor).toFixed(10),
+          fair:    Math.max(swingHigh - range * 0.618, floor).toFixed(10),
+          resist:  (swingHigh + range * 0.382).toFixed(10),
+          sl:      Math.max(swingLow  - range * 0.272, floor * 0.5).toFixed(10),
         };
       }
     }
@@ -1192,7 +1121,7 @@ function buildNewMigrationNarrativePulse(tokens) {
     var t = tokens[i];
     if (!t || !t.address) continue;
     if (!isMigratedDex(t)) continue;
-    if (!isNewMigrationAgeEligible(t)) continue;
+    if (tokenAgeHours(t.creation_timestamp) >= CFG.maxAgeHours) continue;
     scanned++;
 
     var gate = checkNewMigrationNarrative(t);
@@ -1357,8 +1286,7 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   msg += SEP + '\n';
 
   var f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
-  var fibDirection = f.source.includes('_bullish') ? ' bullish' : f.source.includes('_bearish') ? ' bearish' : '';
-  var fibLabel = f.source.startsWith('kline') ? 'dari candle ' + (mode === 'SWING' ? '1D' : '1h') + fibDirection : 'estimasi, cek chart';
+  var fibLabel = f.source.startsWith('kline') ? 'dari candle ' + (mode === 'SWING' ? '1D' : '1h') : 'estimasi, cek chart';
   msg += '📊 Entry & Targets:\n';
   msg += '⏰ Entry   : $' + fmtPrice(t.price) + '\n';
   msg += '🎯 Target  : +30% → $' + fmtPrice(t.price * 1.3) + '\n';
@@ -1443,8 +1371,8 @@ async function processTokens() {
     if (!t.address) continue;
     if (SEEN.has(t.address)) continue;          // belum pernah dilihat
     if (!isMigratedDex(t)) continue;            // pastikan sudah di DEX (bukan masih pump)
-    // Umur < maxAgeHours sudah dijamin server (--max-created), cek range lagi sbg pengaman.
-    if (!isNewMigrationAgeEligible(t)) continue;
+    // umur < maxAgeHours sudah dijamin server (--max-created), cek lagi sbg pengaman
+    if (tokenAgeHours(t.creation_timestamp) >= CFG.maxAgeHours) continue;
     newMigration.push(t);
   }
 
@@ -1516,7 +1444,6 @@ async function processTokens() {
 
     var migCfg = {
       minLp:        CFG.minLp,
-      minAgeHours:  CFG.minAgeHours,
       maxAgeHours:  CFG.maxAgeHours,
       minVol1h:     CFG.minVol1h,
       minSwaps5m:   CFG.minSwaps5m,
@@ -1529,7 +1456,7 @@ async function processTokens() {
       continue;
     }
 
-    var ageGate = checkBaseAgeHours(t.creation_timestamp, CFG.maxAgeHours, CFG.minAgeHours);
+    var ageGate = checkBaseAgeHours(t.creation_timestamp, CFG.maxAgeHours);
     if (ageGate.skip) {
       log('SKIP [MIG] ' + t.symbol + ' (' + ageGate.reason + ')');
       continue;
@@ -1683,12 +1610,8 @@ async function processTokens() {
         });
         log('Tracked [SWING] ' + t.symbol + ' @ $' + t.price);
         // AUTO BUY
-        if (swingResult.allowAutoBuy) {
-          var buyResult = await tryAutoBuy(t.address, t, 'SWING', grade);
-          if (buyResult) Object.assign(TRACKED.get(t.address), buyResult);
-        } else {
-          log('[AUTOBUY] Skip SWING ' + t.symbol + ' (kline 1D tidak valid, notif only)');
-        }
+        var buyResult = await tryAutoBuy(t.address, t, 'SWING', grade);
+        if (buyResult) Object.assign(TRACKED.get(t.address), buyResult);
       }
     } catch (e) { log('Error [SWING] ' + t.symbol + ': ' + e.message); }
   }
@@ -1929,33 +1852,31 @@ async function checkTrackedPositions(trendingTokens) {
       continue;
     }
 
-    if (pos.bought) {
-      var highestIdx = -1;
-      for (var ti = 0; ti < TARGETS.length; ti++) {
-        if (gain >= TARGETS[ti]) highestIdx = ti;
-      }
-      if (highestIdx >= 0 && highestIdx >= pos.nextTargetIdx) {
-        var target = TARGETS[highestIdx];
-        var emoji  = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
-        log(pos.symbol + ' hit target +' + target + '%');
-        logTrackingEvent({ type: 'TERCAPAI', ...pos, currentPrice, target, gain: gain.toFixed(1) });
-        var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
-        var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
-        var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
-        // [NOTIF DIMATIKAN - Target Tercapai] await sendTelegram(
-          // gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n'
-          // + '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n'
-          // + 'Entry: $' + pos.entryPrice.toFixed(10) + '\n'
-          // + 'Sekarang: $' + currentPrice.toFixed(10) + '\n'
-          // + 'Gain: <b>+' + gain.toFixed(1) + '%</b>\n'
-          // + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
-          // + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
-          // pos.msgId,
-          // safeThread
-        // );
-        pos.nextTargetIdx = highestIdx + 1;
-        savePositions();
-      }
+    var highestIdx = -1;
+    for (var ti = 0; ti < TARGETS.length; ti++) {
+      if (gain >= TARGETS[ti]) highestIdx = ti;
+    }
+    if (highestIdx >= 0 && highestIdx >= pos.nextTargetIdx) {
+      var target = TARGETS[highestIdx];
+      var emoji  = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
+      log(pos.symbol + ' hit target +' + target + '%');
+      logTrackingEvent({ type: 'TERCAPAI', ...pos, currentPrice, target, gain: gain.toFixed(1) });
+      var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
+      var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
+      var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
+      // [NOTIF DIMATIKAN - Target Tercapai] await sendTelegram(
+        // gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n'
+        // + '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n'
+        // + 'Entry: $' + pos.entryPrice.toFixed(10) + '\n'
+        // + 'Sekarang: $' + currentPrice.toFixed(10) + '\n'
+        // + 'Gain: <b>+' + gain.toFixed(1) + '%</b>\n'
+        // + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
+        // + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
+        // pos.msgId,
+        // safeThread
+      // );
+      pos.nextTargetIdx = highestIdx + 1;
+      savePositions();
     }
   }
 
@@ -1989,7 +1910,6 @@ log('╚════════════════════════
 log('');
 log('[ Mode 1: New Migration ]');
 log('  LP > $' + CFG.minLp.toLocaleString() + ' | Rug < ' + CFG.maxRugScore + ' [RugCheck API]');
-log('  Age: ' + CFG.minAgeHours + 'j - ' + CFG.maxAgeHours + 'j');
 log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Narasi cocok tetap lanjut walau GMGN risk/momentum/grade lemah');
 log('  GMGN risk warning: Bundler > ' + CFG.maxBundlerPct + '% | Top10 > ' + CFG.maxTop10Holders + '% | CreatorHold > ' + CFG.maxDevHold + '%');
 log('  GMGN risk warning: Sniper > ' + CFG.maxSniperPct + '% | Vol/LP > ' + CFG.maxVolLpRatio + 'x');
