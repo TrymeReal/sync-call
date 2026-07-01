@@ -427,7 +427,8 @@
   </div>
 
   <script>
-    const API = '/api/state';
+    const POSITIONS_JSON = 'positions.json';
+    const TRACKING_JSON = 'tracking_log.json';
 
     function fmt(n, d = 2) {
       n = Number(n);
@@ -587,12 +588,52 @@
       document.getElementById('status').textContent = text;
     }
 
+    async function fetchJsonFile(file, fallback) {
+      const res = await fetch(file + '?t=' + Date.now(), { cache: 'no-store' });
+      if (res.status === 404) return fallback;
+      if (!res.ok) throw new Error(file + ' HTTP ' + res.status);
+      return res.json();
+    }
+
+    function normalizePositions(data) {
+      if (Array.isArray(data)) return data;
+      const entries = data && data.entries && typeof data.entries === 'object' ? data.entries : {};
+      return Object.entries(entries).map(([ca, pos]) => ({
+        ca,
+        ...pos,
+      }));
+    }
+
+    function normalizeEvents(data) {
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.events)) return data.events;
+      return [];
+    }
+
+    function buildStaticState(posData, eventData) {
+      const positions = normalizePositions(posData);
+      const events = normalizeEvents(eventData);
+      return {
+        updatedAt: Date.now(),
+        stats: {
+          activePositions: positions.length,
+          boughtPositions: positions.filter(p => p.bought).length,
+          eventCount: events.length,
+          telegramMode: 'STATIC',
+        },
+        positions,
+        events,
+      };
+    }
+
     async function refresh() {
       try {
-        setStatus(false, 'Loading local data...');
-        const res = await fetch(API + '?t=' + Date.now(), { cache: 'no-store' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const state = await res.json();
+        setStatus(false, 'Loading GitHub JSON...');
+        const [posData, eventData] = await Promise.all([
+          fetchJsonFile(POSITIONS_JSON, { entries: {} }),
+          fetchJsonFile(TRACKING_JSON, []),
+        ]);
+        const state = buildStaticState(posData, eventData);
         const stats = state.stats || {};
 
         document.getElementById('active').textContent = stats.activePositions ?? 0;
@@ -605,10 +646,10 @@
         renderBuy(state.events || []);
         renderTp(state.events || []);
         renderLoss(state.events || []);
-        setStatus(true, 'Live local - ' + new Date().toLocaleTimeString());
+        setStatus(true, 'GitHub JSON - ' + new Date().toLocaleTimeString());
       } catch (err) {
         setStatus(false, 'Dashboard error: ' + err.message);
-        const msg = '<div class="empty">Gagal ambil data. Pastikan server lokal aktif.</div>';
+        const msg = '<div class="empty">Gagal ambil JSON. Upload positions.json dan tracking_log.json di folder yang sama.</div>';
         ['positionsList', 'buyList', 'tpList', 'lossList'].forEach(id => {
           document.getElementById(id).innerHTML = msg;
         });
