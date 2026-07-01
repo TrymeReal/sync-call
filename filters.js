@@ -177,12 +177,11 @@ function checkBaseAgeHours(creationTimestamp, maxHours, minHours) {
     return { skip: true, reason: 'Tidak ada data creation time' };
   }
   var ageHours = (Date.now() - creationTimestamp * 1000) / 3600000;
-  var min = Number(minHours) || 0;
-  if (min > 0 && ageHours < min) {
-    return { skip: true, reason: 'Token baru ' + ageHours.toFixed(1) + 'j (min ' + min + 'j)' };
-  }
   if (ageHours >= maxHours) {
     return { skip: true, reason: 'Token sudah ' + ageHours.toFixed(0) + 'j (max ' + maxHours + 'j)' };
+  }
+  if (minHours != null && ageHours < minHours) {
+    return { skip: true, reason: 'Token baru ' + ageHours.toFixed(2) + 'j (min ' + minHours + 'j)' };
   }
   return { skip: false, reason: '' };
 }
