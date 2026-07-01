@@ -1509,11 +1509,8 @@ async function processTokens() {
     // Update t.volume dengan volume_1h dari token info (untuk notifikasi)
     t.volume = vol1h;
     const grade = gradeToken(t.liquidity, t.volume, rug.score);
-    if (grade === 'SKIP') {
-      log('[MIG] WARN ' + t.symbol + ' (Grade SKIP — LP/Vol kecil, narasi cocok)');
-    }
-
     SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
+    if (grade === 'SKIP') { log('SKIP [MIG] ' + t.symbol + ' (Grade SKIP — LP/Vol kecil)'); continue; }
 
     log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:' + (paidDex ? '✅' : '⚠️') + ' Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
     let msgId = null;
