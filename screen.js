@@ -53,7 +53,8 @@ const CFG = {
   swingMaxChange24h: Number(process.env.SWING_MAX_CHG24H)|| 50,   // belum pump >50% dalam 24h
   swingVolSpikeMin: Number(process.env.SWING_VOL_SPIKE)  || 2.0,  // volume spike vs estimasi avg
   swingMinHolders: Number(process.env.SWING_MIN_HOLDERS) || 500,
-  // Umur Swing sekarang disamakan dengan Migration: pakai CFG.minAgeHours / CFG.maxAgeHours (lihat atas)
+  swingMinAge:     Number(process.env.SWING_MIN_AGE_H)   || 24,   // token minimal 24 jam
+  swingMaxAge:     Number(process.env.SWING_MAX_AGE_H)   || 720,  // max 30 hari (720 jam)
 
   // Smart Money Signal
   signalEnabled:      isTruthyFlag(process.env.SIGNAL_ENABLED),
@@ -825,11 +826,11 @@ async function checkSwingSignal(t) {
   // gak ngirim field ini.
   const holders   = (typeof t.holder_count === 'number') ? t.holder_count : null;
 
-  // — Gate 1: usia token (disamakan dengan Migration: minAgeHours–maxAgeHours) —
-  if (ageH < CFG.minAgeHours)
-    return { pass: false, reason: 'Terlalu baru (' + ageH.toFixed(2) + 'j < ' + CFG.minAgeHours + 'j)' };
-  if (ageH > CFG.maxAgeHours)
-    return { pass: false, reason: 'Terlalu tua (' + ageH.toFixed(0) + 'j > ' + CFG.maxAgeHours + 'j)' };
+  // — Gate 1: usia token —
+  if (ageH < CFG.swingMinAge)
+    return { pass: false, reason: 'Terlalu baru (' + ageH.toFixed(0) + 'j < ' + CFG.swingMinAge + 'j)' };
+  if (ageH > CFG.swingMaxAge)
+    return { pass: false, reason: 'Terlalu tua (' + Math.floor(ageH / 24) + 'h > ' + (CFG.swingMaxAge / 24) + 'h)' };
 
   // — Gate 2: LP cukup untuk swing —
   if (lp < CFG.swingMinLp)
@@ -1424,8 +1425,8 @@ async function processTokens() {
       continue;
     }
 
-    // Token dengan umur di range yang diizinkan (disamakan dengan Migration: minAgeHours–maxAgeHours), cek pre-pump signal.
-    if (ageH >= CFG.minAgeHours && ageH <= CFG.maxAgeHours) {
+    // Token yang sudah lebih tua (≥ swingMinAge), cek pre-pump signal.
+    if (ageH >= CFG.swingMinAge && ageH <= CFG.swingMaxAge) {
       const seenEntry = SEEN.get(t.address);
 
       // Jangan re-notify swing yang sudah pernah dinotif sebagai swing
@@ -1434,8 +1435,8 @@ async function processTokens() {
       // Jika token pernah masuk SEEN sebelumnya, verifikasi usia SEEN juga sudah cukup.
       if (seenEntry && seenEntry.seenAt) {
         const seenAgeH = (Date.now() - seenEntry.seenAt) / 3600000;
-        if (seenAgeH < CFG.minAgeHours) {
-          log('SKIP [SWING] ' + (t.symbol || '?') + ' — sudah di SEEN tapi baru ' + seenAgeH.toFixed(1) + 'j (< ' + CFG.minAgeHours + 'j)');
+        if (seenAgeH < CFG.swingMinAge) {
+          log('SKIP [SWING] ' + (t.symbol || '?') + ' — sudah di SEEN tapi baru ' + seenAgeH.toFixed(1) + 'j (< ' + CFG.swingMinAge + 'j)');
           continue;
         }
       }
@@ -1959,7 +1960,7 @@ log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
 log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
 log('  Vol spike min: ' + CFG.swingVolSpikeMin + 'x | Holders min: ' + CFG.swingMinHolders);
-log('  Age: ' + CFG.minAgeHours + 'j – ' + CFG.maxAgeHours + 'j (disamakan dengan Migration)');
+log('  Age: ' + CFG.swingMinAge + 'j – ' + CFG.swingMaxAge + 'j');
 if (CFG.signalEnabled) {
   log('[ Mode 3: Smart Money Signal ]');
   log('  LP > $' + CFG.signalMinLiquidity.toLocaleString() + ' | Holders > ' + CFG.signalMinHolders);
@@ -1980,4 +1981,4 @@ if (process.env.CI === 'true') {
   setInterval(doHealthCheck, CFG.healthInterval * 1000);
   setTimeout(() => pushJSONToGitHub(), 60 * 1000); // push pertama setelah 1 menit
   setInterval(() => pushJSONToGitHub(), 60 * 1000); // push tiap 1 menit (dipercepat dari 10 menit, biar dashboard ga lag dari notif Telegram)
-} 
+}
