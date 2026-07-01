@@ -1029,7 +1029,7 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
           source: 'kline_' + resolution + '_' + direction,
           swingHigh, swingLow,
           support: Math.max(swingLow - range * 0.272, floor).toFixed(10),
-          fair:    Math.max(swingLow + range * 0.382, floor).toFixed(10),
+          fair:    Math.max(swingLow - range * 0.328, floor).toFixed(10),
           resist:  (swingLow + range * 0.618).toFixed(10),
           sl:      Math.max(swingLow - range * 0.382, floor * 0.5).toFixed(10),
         };
