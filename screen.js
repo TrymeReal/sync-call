@@ -23,6 +23,7 @@ const CFG = {
   minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 50,
   minVol5m:        Number(process.env.MIN_VOL_5M)        || 5000,
   maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 24,
+  minAgeHours:     Number(process.env.MIN_AGE_HOURS)     || 1,   // umur minimum token Migration (jam) — skip token < 1 jam
 
   // Mode New Migration (sama seperti sebelumnya)
   minLp:           Number(process.env.MIN_LP)           || 5000,
@@ -85,6 +86,10 @@ const AUTO_BUY = {
   SLIPPAGE_BPS: Number(process.env.AUTO_BUY_SLIPPAGE)   || 500,
   ONLY_GRADE:   process.env.AUTO_BUY_GRADE             || 'ALL',
   MODES:        process.env.AUTO_BUY_MODES             || 'SWING',
+  // Autobuy hanya eksekusi kalau harga berada di zona Support Fibonacci (retracement 50%).
+  // Toleransi band di sekitar level Support karena harga nyaris tak pernah persis pas di satu titik.
+  FIB_REQUIRE_SUPPORT: process.env.AUTO_BUY_FIB_REQUIRE_SUPPORT !== 'false', // default aktif
+  FIB_TOLERANCE_PCT:   Number(process.env.AUTO_BUY_FIB_TOLERANCE_PCT) || 5,  // ± % dari harga Support
 };
 setDryRun(AUTO_BUY.DRY_RUN);
 
@@ -329,7 +334,7 @@ function fetchGmgnTrenches() {
       '--limit 50',
       '--min-smart-degen-count 1',
       '--sort-by smart_degen_count',
-      '--max-created ' + Math.round(CFG.maxAgeHours * 60) + 'm',  // umur < maxAgeHours jam
+      '--max-created ' + Math.round(CFG.maxAgeHours * 60) + 'm',  // batas atas umur (CLI tidak punya --min-created, batas bawah dicek manual di kode)
       '--min-liquidity ' + CFG.minLp,
       '--raw',
     ].join(' ');
@@ -582,6 +587,33 @@ async function tryAutoBuy(ca, t, mode, grade) {
   if (AUTO_BUY.ONLY_GRADE !== 'ALL' && grade !== AUTO_BUY.ONLY_GRADE) return null;
   if (TRACKED.has(ca) && TRACKED.get(ca).bought) return null;
 
+  // ── Syarat Fibonacci: harga harus berada di zona Support (retracement 50%) ──
+  var fibInfo = null;
+  if (AUTO_BUY.FIB_REQUIRE_SUPPORT) {
+    try {
+      fibInfo = await calculateFibonacci(ca, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
+      var currentPrice = Number(t.price);
+      var supportPrice = Number(fibInfo.support);
+      if (!currentPrice || !supportPrice || supportPrice <= 0) {
+        log('[AUTOBUY] Skip ' + t.symbol + ' — data Fibonacci tidak valid untuk cek Support');
+        return null;
+      }
+      // Jarak harga saat ini dari level Support, dalam persen (bisa + atau -)
+      var distFromSupportPct = ((currentPrice - supportPrice) / supportPrice) * 100;
+      var tol = AUTO_BUY.FIB_TOLERANCE_PCT;
+      if (distFromSupportPct > tol || distFromSupportPct < -tol) {
+        log('[AUTOBUY] Skip ' + t.symbol + ' — harga $' + currentPrice.toFixed(10) +
+            ' di luar zona Support $' + supportPrice.toFixed(10) +
+            ' (jarak ' + distFromSupportPct.toFixed(1) + '%, toleransi ±' + tol + '%)');
+        return null;
+      }
+      log('[AUTOBUY] ' + t.symbol + ' harga di zona Support Fib (jarak ' + distFromSupportPct.toFixed(1) + '% dari $' + supportPrice.toFixed(10) + ') — lanjut buy');
+    } catch (e) {
+      log('[AUTOBUY] Skip ' + t.symbol + ' — gagal hitung Fibonacci: ' + e.message);
+      return null;
+    }
+  }
+
   try {
     log('[AUTOBUY] Eksekusi buy ' + t.symbol + ' ' + AUTO_BUY.AMOUNT_SOL + ' SOL' + (AUTO_BUY.DRY_RUN ? ' [DRY RUN]' : ''));
     var result = await buyToken(ca, AUTO_BUY.AMOUNT_SOL, AUTO_BUY.SLIPPAGE_BPS);
@@ -594,6 +626,7 @@ async function tryAutoBuy(ca, t, mode, grade) {
       'Amount: <b>' + AUTO_BUY.AMOUNT_SOL + ' SOL</b>\n' +
       'Entry: $' + result.entryPriceSol.toFixed(10) + '\n' +
       'Tokens: ' + result.tokenAmount.toFixed(2) + '\n' +
+      (fibInfo ? 'Fib Support: $' + Number(fibInfo.support).toFixed(10) + '\n' : '') +
       (AUTO_BUY.DRY_RUN ? '' : 'TX: <code>' + result.txSignature + '</code>\n') +
       '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>' +
       ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>';
@@ -608,6 +641,7 @@ async function tryAutoBuy(ca, t, mode, grade) {
       amountSol: AUTO_BUY.AMOUNT_SOL,
       tokenAmount: result.tokenAmount,
       txBuy: result.txSignature,
+      fibSupport: fibInfo ? Number(fibInfo.support) : undefined,
     });
 
     return {
@@ -957,10 +991,10 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
         return {
           source: 'kline_' + resolution,
           swingHigh, swingLow,
-          support: Math.max(swingHigh - range * 0.500, floor).toFixed(10),
-          fair:    Math.max(swingHigh - range * 0.618, floor).toFixed(10),
-          resist:  (swingHigh + range * 0.382).toFixed(10),
-          sl:      Math.max(swingLow  - range * 0.272, floor * 0.5).toFixed(10),
+          support: Math.max(swingHigh - range * 0.500, floor).toFixed(10),   // retracement 50%
+          fair:    Math.max(swingHigh - range * 0.618, floor).toFixed(10),   // retracement 61.8% (golden ratio)
+          resist:  (swingHigh + range * 0.382).toFixed(10),                  // extension 38.2% di atas high
+          sl:      Math.max(swingLow  - range * 0.236, floor * 0.5).toFixed(10), // retracement 23.6% di bawah low
         };
       }
     }
@@ -984,19 +1018,19 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
     return {
       source: 'estimasi',
       swingHigh: h, swingLow: l,
-      support: Math.max(h - range * 0.500, floor).toFixed(10),
-      fair:    Math.max(h - range * 0.618, floor).toFixed(10),
-      resist:  (h + range * 0.382).toFixed(10),
-      sl:      Math.max(h - range * 1.272, floor * 0.5).toFixed(10),
+      support: Math.max(h - range * 0.500, floor).toFixed(10),   // retracement 50%
+      fair:    Math.max(h - range * 0.618, floor).toFixed(10),   // retracement 61.8%
+      resist:  (h + range * 0.382).toFixed(10),                  // extension 38.2%
+      sl:      Math.max(h - range * 1.272, floor * 0.5).toFixed(10), // extension 127.2% (rasio fib sah)
     };
   } else {
     return {
       source: 'estimasi',
       swingHigh: h, swingLow: l,
-      support: Math.max(l - range * 0.272, floor).toFixed(10),
-      fair:    Math.max(l - range * 0.500, floor).toFixed(10),
-      resist:  (l + range * 0.382).toFixed(10),
-      sl:      Math.max(l - range * 0.618, floor * 0.5).toFixed(10),
+      support: Math.max(l - range * 0.236, floor).toFixed(10),   // retracement 23.6% di bawah low
+      fair:    Math.max(l - range * 0.500, floor).toFixed(10),   // retracement 50%
+      resist:  (l + range * 0.382).toFixed(10),                  // extension 38.2%
+      sl:      Math.max(l - range * 0.618, floor * 0.5).toFixed(10), // retracement 61.8%
     };
   }
 }
@@ -1121,7 +1155,8 @@ function buildNewMigrationNarrativePulse(tokens) {
     var t = tokens[i];
     if (!t || !t.address) continue;
     if (!isMigratedDex(t)) continue;
-    if (tokenAgeHours(t.creation_timestamp) >= CFG.maxAgeHours) continue;
+    var ageHNarr = tokenAgeHours(t.creation_timestamp);
+    if (ageHNarr < CFG.minAgeHours || ageHNarr >= CFG.maxAgeHours) continue;
     scanned++;
 
     var gate = checkNewMigrationNarrative(t);
@@ -1371,8 +1406,9 @@ async function processTokens() {
     if (!t.address) continue;
     if (SEEN.has(t.address)) continue;          // belum pernah dilihat
     if (!isMigratedDex(t)) continue;            // pastikan sudah di DEX (bukan masih pump)
-    // umur < maxAgeHours sudah dijamin server (--max-created), cek lagi sbg pengaman
-    if (tokenAgeHours(t.creation_timestamp) >= CFG.maxAgeHours) continue;
+    // umur harus 1–24 jam (batas atas dijamin server via --max-created, batas bawah dicek manual)
+    const ageHMig = tokenAgeHours(t.creation_timestamp);
+    if (ageHMig < CFG.minAgeHours || ageHMig >= CFG.maxAgeHours) continue;
     newMigration.push(t);
   }
 
@@ -1445,6 +1481,7 @@ async function processTokens() {
     var migCfg = {
       minLp:        CFG.minLp,
       maxAgeHours:  CFG.maxAgeHours,
+      minAgeHours:  CFG.minAgeHours,
       minVol1h:     CFG.minVol1h,
       minSwaps5m:   CFG.minSwaps5m,
       minVol5m:     CFG.minVol5m,
@@ -1456,7 +1493,7 @@ async function processTokens() {
       continue;
     }
 
-    var ageGate = checkBaseAgeHours(t.creation_timestamp, CFG.maxAgeHours);
+    var ageGate = checkBaseAgeHours(t.creation_timestamp, CFG.maxAgeHours, CFG.minAgeHours);
     if (ageGate.skip) {
       log('SKIP [MIG] ' + t.symbol + ' (' + ageGate.reason + ')');
       continue;
@@ -1909,12 +1946,16 @@ log('║   AUTO SCREENING v6 — TRIPLE MODE   ║');
 log('╚══════════════════════════════════════╝');
 log('');
 log('[ Mode 1: New Migration ]');
+log('  Umur token: ' + CFG.minAgeHours + 'j – ' + CFG.maxAgeHours + 'j');
 log('  LP > $' + CFG.minLp.toLocaleString() + ' | Rug < ' + CFG.maxRugScore + ' [RugCheck API]');
 log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Narasi cocok tetap lanjut walau GMGN risk/momentum/grade lemah');
 log('  GMGN risk warning: Bundler > ' + CFG.maxBundlerPct + '% | Top10 > ' + CFG.maxTop10Holders + '% | CreatorHold > ' + CFG.maxDevHold + '%');
 log('  GMGN risk warning: Sniper > ' + CFG.maxSniperPct + '% | Vol/LP > ' + CFG.maxVolLpRatio + 'x');
 log('  Momentum warning: Vol1h < $' + CFG.minVol1h.toLocaleString() + ' | Txns5m < ' + CFG.minSwaps5m + ' | Vol5m < $' + CFG.minVol5m.toLocaleString());
 log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
+log('[ Auto Buy ]');
+log('  Enabled: ' + AUTO_BUY.ENABLED + ' | Modes: ' + AUTO_BUY.MODES + ' | Grade: ' + AUTO_BUY.ONLY_GRADE);
+log('  Syarat Fib Support: ' + (AUTO_BUY.FIB_REQUIRE_SUPPORT ? 'AKTIF (toleransi ±' + AUTO_BUY.FIB_TOLERANCE_PCT + '% dari retracement 50%)' : 'NONAKTIF'));
 log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
 log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
@@ -1939,5 +1980,5 @@ if (process.env.CI === 'true') {
   runLoop();
   setInterval(doHealthCheck, CFG.healthInterval * 1000);
   setTimeout(() => pushJSONToGitHub(), 60 * 1000); // push pertama setelah 1 menit
-  setInterval(() => pushJSONToGitHub(), 10 * 60 * 1000); // push tiap 10 menit
+  setInterval(() => pushJSONToGitHub(), 60 * 1000); // push tiap 1 menit (dipercepat dari 10 menit, biar dashboard ga lag dari notif Telegram)
 }
