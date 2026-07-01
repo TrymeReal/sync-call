@@ -172,11 +172,15 @@ function checkBaseLiquidity(lp, minLp) {
   return { skip: false, reason: '' };
 }
 
-function checkBaseAgeHours(creationTimestamp, maxHours) {
+function checkBaseAgeHours(creationTimestamp, maxHours, minHours) {
   if (!creationTimestamp) {
     return { skip: true, reason: 'Tidak ada data creation time' };
   }
   var ageHours = (Date.now() - creationTimestamp * 1000) / 3600000;
+  var min = Number(minHours) || 0;
+  if (min > 0 && ageHours < min) {
+    return { skip: true, reason: 'Token baru ' + ageHours.toFixed(1) + 'j (min ' + min + 'j)' };
+  }
   if (ageHours >= maxHours) {
     return { skip: true, reason: 'Token sudah ' + ageHours.toFixed(0) + 'j (max ' + maxHours + 'j)' };
   }
@@ -222,7 +226,7 @@ function shouldSkipNewMigration(token, tokenInfo, cfg) {
   var lp = checkBaseLiquidity(t.liquidity, cfg.minLp);
   if (lp.skip) return lp;
 
-  var age = checkBaseAgeHours(t.creation_timestamp, cfg.maxAgeHours);
+  var age = checkBaseAgeHours(t.creation_timestamp, cfg.maxAgeHours, cfg.minAgeHours);
   if (age.skip) return age;
 
   var vol1h = checkVol1h(price.volume_1h, cfg.minVol1h);
